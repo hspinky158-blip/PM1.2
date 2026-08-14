@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Dự án & Công việc (Cloud Firebase)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { initializeFirestore, collection, getDocs, setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyArB7TKdMEZe1m8P3KQE9oDsQa3VR28G_M",
+            authDomain: "project-management-e6e99.firebaseapp.com",
+            projectId: "project-management-e6e99",
+            storageBucket: "project-management-e6e99.firebasestorage.app",
+            messagingSenderId: "586044974271",
+            appId: "1:586044974271:web:df3664fc298ff9a2d1520a",
+            measurementId: "G-NY0X9Z771S"
+        };
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            const db = initializeFirestore(app, {}, "default");
+
+            window.db = db;
+            window.collection = collection;
+            window.getDocs = getDocs;
+            window.setDoc = setDoc;
+            window.doc = doc;
+            window.deleteDoc = deleteDoc;
+
+            window.initFirebaseData();
+        } catch (err) {
+            console.error("Lỗi khởi tạo Firebase:", err);
+            document.getElementById('project-list').innerHTML = `<div class="p-4 text-red-500 text-xs">Lỗi khởi tạo SDK!</div>`;
+        }
+    </script>
+
+    <style>
+        @media print {
+            body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            aside, button, input[type="text"], input[type="date"], select, textarea {
+                border: none !important;
+                box-shadow: none !important;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+
+    <div class="flex flex-col md:flex-row h-screen overflow-hidden">
+        
+        <aside class="w-full md:w-80 bg-white border-b md:border-r border-slate-200 flex flex-col justify-between no-print shrink-0 max-h-48 md:max-h-full">
+            <div>
+                <div class="p-3 md:p-4 border-b border-slate-200 flex items-center justify-between">
+                    <h1 class="font-bold text-base md:text-lg text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-cloud text-indigo-600"></i> Dự Án Cloud
+                    </h1>
+                    <button onclick="addNewProject()" class="bg-indigo-600 hover:bg-indigo-700 text-white w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition shadow-sm cursor-pointer" title="Thêm dự án mới">
+                        <i class="fa-solid fa-plus text-sm"></i>
+                    </button>
+                </div>
+                <div id="project-list" class="p-2 md:p-3 space-y-1 overflow-y-auto max-h-32 md:max-h-[calc(100vh-140px)]">
+                    <div class="text-center py-4 text-slate-400 text-xs">Đang tải dữ liệu đám mây...</div>
+                </div>
+            </div>
+            <div class="hidden md:block p-3 border-t border-slate-200 text-xs text-indigo-600 font-medium text-center bg-indigo-50/50">
+                <i class="fa-solid fa-rotate animate-spin mr-1"></i> Đã kết nối Đám mây Firebase
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50" id="main-content">
+            <div class="flex-1 flex items-center justify-center text-slate-400 p-6 text-center">
+                <p>Đang kết nối cơ sở dữ liệu...</p>
+            </div>
+        </main>
+
+    </div>
+
+    <script>
+        let projects = [];
+        let currentProjectId = null;
+        let currentTab = 'tasks';
+
+        function formatDateToDisplay(dateStr) {
+            if (!dateStr) return '';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return dateStr;
+        }
+
+        window.initFirebaseData = async function() {
+            try {
+                const querySnapshot = await window.getDocs(window.collection(window.db, "projects"));
+                projects = [];
+                querySnapshot.forEach((docSnap) => {
+                    projects.push({ id: docSnap.id, ...docSnap.data() });
+                });
+
+                if (projects.length === 0) {
+                    const defaultProj = {
+                        id: "proj_" + Date.now(),
+                        name: 'Dự án MIK HẠ TẦNG',
+                        members: 'Ngọt, Phanh, Thắng',
+                        startDate: new Date().toISOString().split('T')[0],
+                        deadline: '2026-07-30',
+                        tasks: [
+                            { 
+                                id: 101, 
+                                name: 'Kịch bản', 
+                                assignee: 'Ngọt, Phanh', 
+                                startDate: new Date().toISOString().split('T')[0],
+                                deadline: '2026-06-15', 
+                                urgency: 'Cao', 
+                                status: 'Ver 1',
+                                progressNote: 'Đang triển khai',
+                                cost: 5000000,
+                                links: [],
+                                issue: '',
+                                solution: ''
+                            }
+                        ]
+                    };
+                    await window.setDoc(window.doc(window.db, "projects", defaultProj.id), defaultProj);
+                    projects.push(defaultProj);
+                }
+
+                currentProjectId = currentProjectId || projects[0].id;
+                renderApp();
+            } catch (error) {
+                console.error("Lỗi tải Firebase:", error);
+                document.getElementById('project-list').innerHTML = `
+                    <div class="p-4 text-center">
+                        <p class="text-red-500 text-xs font-bold mb-1">⚠️ Lỗi kết nối Firestore!</p>
+                        <p class="text-[10px] text-slate-500">${error.message}</p>
+                    </div>
+                `;
+            }
+        };
+
+        async function saveData() {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (proj) {
+                try {
+                    await window.setDoc(window.doc(window.db, "projects", String(proj.id)), proj);
+                } catch (error) {
+                    console.error("Lỗi lưu dữ liệu lên Cloud:", error);
+                }
+            }
+            checkTaskDeadlines();
+        }
+
+        async function addNewProject() {
+            const today = new Date().toISOString().split('T')[0];
+            const newProj = {
+                id: "proj_" + Date.now(),
+                name: 'Dự án mới chưa đặt tên',
+                members: 'Chưa có thành viên',
+                startDate: today,
+                deadline: '2026-12-31',
+                tasks: []
+            };
+            projects.push(newProj);
+            currentProjectId = newProj.id;
+            await saveData();
+            renderApp();
+        }
+
+        async function updateProjectInfo(field, value) {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (proj) {
+                proj[field] = value;
+                await saveData();
+                renderProjectList();
+            }
+        }
+
+        async function deleteProject(id, event) {
+            event.stopPropagation();
+            if(confirm('Bạn có chắc muốn xóa dự án này trên đám mây?')) {
+                try {
+                    await window.deleteDoc(window.doc(window.db, "projects", String(id)));
+                    projects = projects.filter(p => p.id !== id);
+                    currentProjectId = projects.length > 0 ? projects[0].id : null;
+                    renderApp();
+                } catch (error) {
+                    console.error("Lỗi xóa dự án:", error);
+                }
+            }
+        }
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            renderMainContent();
+        }
+
+        async function addNewTask() {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (!proj) return;
+
+            const today = new Date().toISOString().split('T')[0];
+            if (!proj.tasks) proj.tasks = [];
+            
+            proj.tasks.push({
+                id: Date.now(),
+                name: 'Công việc mới',
+                assignee: 'Chưa phân công',
+                startDate: today,
+                deadline: proj.deadline || today,
+                urgency: 'Thấp',
+                status: 'Ver 1',
+                progressNote: '',
+                cost: 0,
+                links: [],
+                issue: '',
+                solution: ''
+            });
+            sortTasksByDeadline(proj);
+            await saveData();
+            renderMainContent();
+        }
+
+        async function updateTask(taskId, field, value) {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (!proj) return;
+            const task = proj.tasks.find(t => t.id === taskId);
+            if (task) {
+                if (field === 'cost') {
+                    task[field] = parseFloat(value) || 0;
+                } else {
+                    task[field] = value;
+                }
+                
+                if (field === 'deadline' || field === 'startDate') {
+                    sortTasksByDeadline(proj);
+                }
+                await saveData();
+                renderMainContent();
+            }
+        }
+
+        async function deleteTask(taskId) {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (!proj) return;
+            proj.tasks = proj.tasks.filter(t => t.id !== taskId);
+            await saveData();
+            renderMainContent();
+        }
+
+        async function addLinkToTask(taskId) {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (!proj) return;
+            const task = proj.tasks.find(t => t.id === taskId);
+            if (task) {
+                if (!task.links) task.links = [];
+                const url = prompt("Nhập đường dẫn (URL) tài liệu, hình ảnh, drive:");
+                if (url && url.trim() !== '') {
+                    task.links.push({ id: Date.now(), url: url.trim() });
+                    await saveData();
+                    renderMainContent();
+                }
+            }
+        }
+
+        async function removeLinkFromTask(taskId, linkId) {
+            const proj = projects.find(p => p.id === currentProjectId);
+            if (!proj) return;
+            const task = proj.tasks.find(t => t.id === taskId);
+            if (task && task.links) {
+                task.links = task.links.filter(l => l.id !== linkId);
+                await saveData();
+                renderMainContent();
+            }
+        }
+
+        function sortTasksByDeadline(proj) {
+            if (proj && proj.tasks) {
+                proj.tasks.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+            }
+        }
+
+        function exportProjectReport() {
+            window.print();
+        }
+
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+        }
+
+        function checkTaskDeadlines() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            let dueCount = 0;
+
+            projects.forEach(proj => {
+                if (proj.tasks) {
+                    proj.tasks.forEach(task => {
+                        if (task.deadline === todayStr) {
+                            dueCount++;
+                        }
+                    });
+                }
+            });
+
+            if (dueCount > 0) {
+                document.title = `(${dueCount}) 🔔 Có Deadline Hôm Nay!`;
+            } else {
+                document.title = `Quản lý Dự án & Công việc (Cloud)`;
+            }
+        }
+
+        function renderProjectList() {
+            const listEl = document.getElementById('project-list');
+            listEl.innerHTML = '';
+
+            if (!projects || projects.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-4 text-slate-400 text-xs">Chưa có dự án nào.</div>`;
+                return;
+            }
+
+            projects.forEach(proj => {
+                const isActive = proj.id === currentProjectId;
+                const item = document.createElement('div');
+                item.className = `group flex items-center justify-between p-2.5 md:p-3 rounded-xl cursor-pointer transition ${isActive ? 'bg-indigo-50 text-indigo-900 font-semibold shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`;
+                item.onclick = () => {
+                    currentProjectId = proj.id;
+                    renderApp();
+                };
+
+                item.innerHTML = `
+                    <div class="truncate flex-1 pr-2">
+                        <div class="text-xs md:text-sm font-medium truncate">${proj.name}</div>
+                        <div class="text-[10px] md:text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <i class="fa-regular fa-clock text-[9px]"></i> ĐT: ${formatDateToDisplay(proj.deadline) || 'Chưa có'}
+                        </div>
+                    </div>
+                    <button onclick="deleteProject('${proj.id}', event)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-1 transition cursor-pointer">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function renderMainContent() {
+            const mainEl = document.getElementById('main-content');
+            const proj = projects.find(p => p.id === currentProjectId);
+
+            if (!proj) {
+                mainEl.innerHTML = `
+                    <div class="flex-1 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+                        <i class="fa-solid fa-folder-open text-4xl md:text-5xl mb-3"></i>
+                        <p class="text-sm">Chọn một dự án ở trên hoặc tạo mới để bắt đầu.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (!proj.tasks) proj.tasks = [];
+            sortTasksByDeadline(proj);
+            let tabContentHtml = '';
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            if (currentTab === 'tasks') {
+                let tasksHtml = '';
+                if (proj.tasks.length === 0) {
+                    tasksHtml = `<tr><td colspan="8" class="text-center py-8 text-slate-400 italic text-xs">Chưa có đầu mục công việc nào. Bấm "Thêm công việc" bên dưới.</td></tr>`;
+                } else {
+                    proj.tasks.forEach(task => {
+                        let urgencyClass = 'bg-slate-100 text-slate-700';
+                        if (task.urgency === 'Cao') urgencyClass = 'bg-red-100 text-red-700 font-semibold';
+                        else if (task.urgency === 'Trung bình') urgencyClass = 'bg-amber-100 text-amber-700';
+                        else if (task.urgency === 'Thấp') urgencyClass = 'bg-green-100 text-green-700';
+
+                        let statusClass = 'bg-slate-100 text-slate-700';
+                        const st = task.status || 'Ver 1';
+                        if (st === 'Final') statusClass = 'bg-emerald-100 text-emerald-800 font-bold';
+                        else if (st.startsWith('Ver')) statusClass = 'bg-blue-50 text-blue-700';
+                        else if (st === 'Chờ sản xuất') statusClass = 'bg-purple-100 text-purple-800';
+                        else if (st === 'Pending') statusClass = 'bg-rose-100 text-rose-800';
+
+                        let deadlineBadge = '';
+                        if (task.deadline < todayStr) {
+                            deadlineBadge = `<span class="ml-1 px-1.5 py-0.5 text-[9px] bg-red-100 text-red-600 rounded font-bold">Quá hạn</span>`;
+                        } else if (task.deadline === todayStr) {
+                            deadlineBadge = `<span class="ml-1 px-1.5 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded font-bold animate-pulse">Hôm nay</span>`;
+                        }
+
+                        let linksHtml = '';
+                        if (task.links && task.links.length > 0) {
+                            task.links.forEach((l, idx) => {
+                                linksHtml += `
+                                    <div class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-[11px] px-1.5 py-0.5 rounded border border-indigo-200 mr-1 mb-1">
+                                        <a href="${l.url}" target="_blank" class="hover:underline truncate max-w-[80px]" title="${l.url}">File ${idx + 1}</a>
+                                        <button onclick="removeLinkFromTask(${task.id}, ${l.id})" class="text-indigo-400 hover:text-red-500 ml-0.5 cursor-pointer no-print"><i class="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        tasksHtml += `
+                            <tr class="hover:bg-slate-50 transition border-b border-slate-100 align-top text-xs md:text-sm">
+                                <td class="p-2 md:p-3">
+                                    <input type="text" value="${task.name}" onchange="updateTask(${task.id}, 'name', this.value)" 
+                                        class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 focus:outline-none py-1 text-slate-800 font-medium">
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <input type="text" value="${task.assignee}" onchange="updateTask(${task.id}, 'assignee', this.value)" 
+                                        class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 focus:outline-none py-1 text-slate-600 text-xs md:text-sm">
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <div class="flex items-center flex-wrap">
+                                        <input type="date" value="${task.deadline}" onchange="updateTask(${task.id}, 'deadline', this.value)" 
+                                            class="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 focus:outline-none py-1 text-slate-600 text-xs md:text-sm font-semibold text-indigo-600">
+                                        ${deadlineBadge}
+                                    </div>
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <select onchange="updateTask(${task.id}, 'urgency', this.value)" class="text-[11px] md:text-xs px-2 py-1 rounded-lg border border-slate-200 focus:outline-none ${urgencyClass}">
+                                        <option value="Thấp" ${task.urgency === 'Thấp' ? 'selected' : ''}>Thấp</option>
+                                        <option value="Trung bình" ${task.urgency === 'Trung bình' ? 'selected' : ''}>Trung bình</option>
+                                        <option value="Cao" ${task.urgency === 'Cao' ? 'selected' : ''}>Cao</option>
+                                    </select>
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <select onchange="updateTask(${task.id}, 'status', this.value)" class="text-[11px] md:text-xs px-2 py-1 rounded-lg border border-slate-200 focus:outline-none ${statusClass}">
+                                        <option value="Ver 1" ${st === 'Ver 1' ? 'selected' : ''}>Ver 1</option>
+                                        <option value="Ver 2" ${st === 'Ver 2' ? 'selected' : ''}>Ver 2</option>
+                                        <option value="Ver 3" ${st === 'Ver 3' ? 'selected' : ''}>Ver 3</option>
+                                        <option value="Ver 4" ${st === 'Ver 4' ? 'selected' : ''}>Ver 4</option>
+                                        <option value="Ver 5" ${st === 'Ver 5' ? 'selected' : ''}>Ver 5</option>
+                                        <option value="Final" ${st === 'Final' ? 'selected' : ''}>Final</option>
+                                        <option value="Chờ sản xuất" ${st === 'Chờ sản xuất' ? 'selected' : ''}>Chờ sản xuất</option>
+                                        <option value="Pending" ${st === 'Pending' ? 'selected' : ''}>Pending</option>
+                                    </select>
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <input type="text" value="${task.progressNote || ''}" onchange="updateTask(${task.id}, 'progressNote', this.value)" 
+                                        placeholder="Ghi rõ tình trạng..." 
+                                        class="w-full bg-slate-50 hover:bg-slate-100 focus:bg-white px-2 py-1 rounded-lg border border-slate-200 text-[11px] md:text-xs text-slate-700 focus:outline-none focus:border-indigo-600">
+                                </td>
+                                <td class="p-2 md:p-3">
+                                    <div class="flex flex-wrap items-center gap-1 mb-1">${linksHtml}</div>
+                                    <button onclick="addLinkToTask(${task.id})" class="text-[11px] md:text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 mt-1 cursor-pointer no-print">
+                                        <i class="fa-solid fa-plus-circle"></i> Thêm TL
+                                    </button>
+                                </td>
+                                <td class="p-2 md:p-3 text-center no-print">
+                                    <button onclick="deleteTask(${task.id})" class="text-slate-400 hover:text-red-500 transition p-1 cursor-pointer">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                tabContentHtml = `
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="font-bold text-base md:text-lg text-slate-800">Danh Sách Đầu Mục Công Việc</h2>
+                            <p class="text-[11px] md:text-xs text-slate-500">Các công việc có deadline gần nhất được tự động đẩy lên đầu.</p>
+                        </div>
+                        <button onclick="addNewTask()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs md:text-sm font-medium px-3.5 py-2 rounded-xl shadow-sm transition flex items-center gap-2 cursor-pointer no-print whitespace-nowrap">
+                            <i class="fa-solid fa-plus"></i> Thêm công việc
+                        </button>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+                        <table class="w-full text-left border-collapse min-w-[950px]">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider">
+                                    <th class="p-2 md:p-3 font-semibold w-1/5">Tên công việc</th>
+                                    <th class="p-2 md:p-3 font-semibold w-28">Người thực hiện</th>
+                                    <th class="p-2 md:p-3 font-semibold w-36">Deadline (DD/MM/YYYY)</th>
+                                    <th class="p-2 md:p-3 font-semibold w-24">Độ ưu tiên</th>
+                                    <th class="p-2 md:p-3 font-semibold w-28">Trạng thái / Ver</th>
+                                    <th class="p-2 md:p-3 font-semibold w-1/4">Ghi chú tình trạng</th>
+                                    <th class="p-2 md:p-3 font-semibold">Tài liệu / Link / Ảnh</th>
+                                    <th class="p-2 md:p-3 font-semibold w-12 text-center no-print">Xóa</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tasksHtml}</tbody>
+                        </table>
+                    </div>
+                `;
+            } 
+            else if (currentTab === 'gantt') {
+                let ganttRows = '';
+                if (proj.tasks.length === 0) {
+                    ganttRows = `<div class="text-center py-8 text-slate-400 italic text-xs">Chưa có dữ liệu công việc để hiển thị biểu đồ Gantt.</div>`;
+                } else {
+                    const projStart = new Date(proj.startDate || todayStr).getTime();
+                    const projEnd = new Date(proj.deadline || todayStr).getTime();
+                    const totalDuration = projEnd - projStart;
+
+                    proj.tasks.forEach((task, index) => {
+                        const tStart = new Date(task.startDate || proj.startDate || todayStr).getTime();
+                        const tEnd = new Date(task.deadline).getTime();
+
+                        let leftPercent = 0;
+                        let widthPercent = 100;
+
+                        if (totalDuration > 0) {
+                            leftPercent = ((tStart - projStart) / totalDuration) * 100;
+                            widthPercent = ((tEnd - tStart) / totalDuration) * 100;
+
+                            if (leftPercent < 0) leftPercent = 0;
+                            if (leftPercent > 100) leftPercent = 100;
+                            if (widthPercent < 2) widthPercent = 2;
+                            if (leftPercent + widthPercent > 100) widthPercent = 100 - leftPercent;
+                        }
+
+                        ganttRows += `
+                            <div class="grid grid-cols-12 gap-2 items-center py-2.5 border-b border-slate-100 text-xs md:text-sm">
+                                <div class="col-span-4 font-medium text-slate-800 truncate" title="${task.name}">
+                                    ${index + 1}. ${task.name} 
+                                    <span class="text-[11px] text-indigo-600 font-semibold">[${task.status || 'Ver 1'}]</span>
+                                </div>
+                                <div class="col-span-2 text-[11px] md:text-xs text-slate-500 truncate">${task.assignee}</div>
+                                <div class="col-span-6 relative">
+                                    <div class="w-full bg-slate-100 h-6 md:h-7 rounded-lg relative overflow-hidden flex items-center">
+                                        <div class="absolute top-1 bottom-1 bg-indigo-600 rounded-md shadow-sm flex items-center px-2 text-white text-[10px] md:text-[11px] font-medium transition-all duration-300 truncate"
+                                             style="left: ${leftPercent}%; width: ${widthPercent}%;" 
+                                             title="Từ ${formatDateToDisplay(task.startDate || proj.startDate)} đến ${formatDateToDisplay(task.deadline)}">
+                                            <span class="truncate">${formatDateToDisplay(task.startDate || '')} ➔ ${formatDateToDisplay(task.deadline)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+
+                tabContentHtml = `
+                    <div class="mb-4">
+                        <h2 class="font-bold text-base md:text-lg text-slate-800">Biểu Đồ Tiến Độ (Gantt Chart)</h2>
+                        <p class="text-[11px] md:text-xs text-slate-500">Thanh tiến độ thể hiện chuẩn định dạng ngày/tháng/năm (DD/MM/YYYY).</p>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-6 overflow-x-auto">
+                        <div class="min-w-[650px] space-y-2">
+                            <div class="grid grid-cols-12 gap-2 text-[11px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3 border-b border-slate-200">
+                                <div class="col-span-4">Tên công việc & Ver</div>
+                                <div class="col-span-2">Phụ trách</div>
+                                <div class="col-span-6 flex justify-between px-1">
+                                    <span>Bắt đầu (${formatDateToDisplay(proj.startDate)})</span>
+                                    <span>Deadline Tổng (${formatDateToDisplay(proj.deadline)})</span>
+                                </div>
+                            </div>
+                            ${ganttRows}
+                        </div>
+                    </div>
+                `;
+            }
+            else if (currentTab === 'costs') {
+                let totalCost = 0;
+                let costPerPerson = {};
+                let costRows = '';
+
+                proj.tasks.forEach(t => {
+                    let c = Number(t.cost) || 0;
+                    totalCost += c;
+                    let p = (t.assignee || 'Chưa phân công').trim();
+                    costPerPerson[p] = (costPerPerson[p] || 0) + c;
+
+                    costRows += `
+                        <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs md:text-sm">
+                            <td class="p-2.5 md:p-3 font-medium text-slate-800">${t.name} <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded ml-1">${t.status || 'Ver 1'}</span></td>
+                            <td class="p-2.5 md:p-3 text-slate-600">${t.assignee}</td>
+                            <td class="p-2.5 md:p-3">
+                                <input type="number" value="${t.cost || 0}" onchange="updateTask(${t.id}, 'cost', this.value)" 
+                                    class="w-28 md:w-32 bg-slate-50 px-2 py-1 rounded border border-slate-200 text-xs md:text-sm font-semibold text-indigo-600 focus:outline-none focus:border-indigo-600"> VNĐ
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                let summaryPersonHtml = '';
+                for (let [person, cost] of Object.entries(costPerPerson)) {
+                    summaryPersonHtml += `
+                        <div class="bg-white p-3.5 md:p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <div class="text-[10px] md:text-xs text-slate-400 uppercase font-semibold">Thành viên</div>
+                            <div class="text-sm md:text-base font-bold text-slate-800 mt-1 truncate">${person}</div>
+                            <div class="text-xs md:text-sm font-semibold text-indigo-600 mt-2">${cost.toLocaleString('vi-VN')} VNĐ</div>
+                        </div>
+                    `;
+                }
+
+                tabContentHtml = `
+                    <div class="mb-6">
+                        <h2 class="font-bold text-base md:text-lg text-slate-800">Quản Lý Chi Phí Dự Án</h2>
+                        <p class="text-[11px] md:text-xs text-slate-500">Theo dõi ngân sách và tổng hợp chi phí.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-indigo-600 text-white p-4 md:p-5 rounded-2xl shadow-sm">
+                            <div class="text-[11px] uppercase tracking-wider opacity-80">Tổng chi phí dự án</div>
+                            <div class="text-xl md:text-2xl font-bold mt-2">${totalCost.toLocaleString('vi-VN')} VNĐ</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 text-xs md:text-sm font-bold text-slate-700">Chi phí theo từng cá nhân:</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
+                        ${summaryPersonHtml || '<div class="text-slate-400 italic text-xs">Chưa có chi phí cá nhân.</div>'}
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+                        <table class="w-full text-left border-collapse min-w-[500px]">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider">
+                                    <th class="p-2.5 md:p-3 font-semibold w-1/2">Đầu mục công việc</th>
+                                    <th class="p-2.5 md:p-3 font-semibold w-1/4">Người phụ trách</th>
+                                    <th class="p-2.5 md:p-3 font-semibold w-1/4">Chi phí</th>
+                                </tr>
+                            </thead>
+                            <tbody>${costRows || '<tr><td colspan="3" class="text-center py-6 text-slate-400 italic text-xs">Chưa có công việc nào.</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            else if (currentTab === 'risks') {
+                let riskRows = '';
+                if (proj.tasks.length === 0) {
+                    riskRows = `<tr><td colspan="2" class="text-center py-8 text-slate-400 italic text-xs">Chưa có đầu mục công việc nào.</td></tr>`;
+                } else {
+                    proj.tasks.forEach(task => {
+                        riskRows += `
+                            <tr class="hover:bg-slate-50 border-b border-slate-100 align-top text-xs md:text-sm">
+                                <td class="p-2.5 md:p-3 font-medium text-slate-800 w-1/3">
+                                    ${task.name} 
+                                    <span class="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded ml-1">${task.status || 'Ver 1'}</span><br>
+                                    <span class="text-[11px] text-slate-400 font-normal">Phụ trách: ${task.assignee}</span>
+                                </td>
+                                <td class="p-2.5 md:p-3 space-y-2 w-2/3">
+                                    <div>
+                                        <label class="block text-[10px] md:text-[11px] font-semibold text-amber-600 uppercase mb-1">Vấn đề / Rủi ro:</label>
+                                        <textarea rows="2" onchange="updateTask(${task.id}, 'issue', this.value)" placeholder="Nhập khó khăn, vướng mắc..." 
+                                            class="w-full bg-amber-50/50 hover:bg-amber-50 focus:bg-white px-2.5 py-2 rounded-xl border border-amber-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-600">${task.issue || ''}</textarea>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] md:text-[11px] font-semibold text-emerald-600 uppercase mb-1">Hướng giải quyết / Đề xuất khắc phục:</label>
+                                        <textarea rows="2" onchange="updateTask(${task.id}, 'solution', this.value)" placeholder="Nhập phương án giải quyết..." 
+                                            class="w-full bg-emerald-50/50 hover:bg-emerald-50 focus:bg-white px-2.5 py-2 rounded-xl border border-emerald-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-600">${task.solution || ''}</textarea>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                tabContentHtml = `
+                    <div class="mb-4">
+                        <h2 class="font-bold text-base md:text-lg text-slate-800">Vấn Đề, Rủi Ro & Hướng Giải Quyết</h2>
+                        <p class="text-[11px] md:text-xs text-slate-500">Ghi nhận vướng mắc và phương án xử lý.</p>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+                        <table class="w-full text-left border-collapse min-w-[550px]">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider">
+                                    <th class="p-2.5 md:p-3 font-semibold w-1/3">Đầu mục công việc</th>
+                                    <th class="p-2.5 md:p-3 font-semibold w-2/3">Nội dung rủi ro & Hướng giải quyết</th>
+                                </tr>
+                            </thead>
+                            <tbody>${riskRows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            mainEl.innerHTML = `
+                <div class="bg-white border-b border-slate-200 p-4 md:p-6 shadow-sm">
+                    <div class="max-w-7xl mx-auto">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                            <div class="flex-1 w-full sm:w-auto pr-2">
+                                <label class="text-[11px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider">Tên dự án</label>
+                                <input type="text" value="${proj.name}" onchange="updateProjectInfo('name', this.value)" 
+                                    class="w-full text-xl md:text-2xl font-bold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 focus:outline-none py-1">
+                            </div>
+                            <button onclick="exportProjectReport()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2 cursor-pointer no-print whitespace-nowrap">
+                                <i class="fa-solid fa-file-arrow-down"></i> Xuất Báo Cáo (PDF)
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                            <div>
+                                <label class="text-[11px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                    <i class="fa-solid fa-users"></i> Thành viên tham gia
+                                </label>
+                                <input type="text" value="${proj.members}" onchange="updateProjectInfo('members', this.value)" 
+                                    class="w-full text-xs md:text-sm text-slate-700 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:border-indigo-600">
+                            </div>
+                            <div>
+                                <label class="text-[11px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                    <i class="fa-solid fa-calendar-days"></i> Ngày bắt đầu (DD/MM/YYYY)
+                                </label>
+                                <input type="date" value="${proj.startDate || todayStr}" onchange="updateProjectInfo('startDate', this.value)" 
+                                    class="w-full text-xs md:text-sm text-slate-700 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:border-indigo-600">
+                            </div>
+                            <div>
+                                <label class="text-[11px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                    <i class="fa-solid fa-calendar-days"></i> Deadline tổng (DD/MM/YYYY)
+                                </label>
+                                <input type="date" value="${proj.deadline}" onchange="updateProjectInfo('deadline', this.value)" 
+                                    class="w-full text-xs md:text-sm text-slate-700 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:border-indigo-600">
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 mt-6 border-b border-slate-100 pb-2 no-print overflow-x-auto">
+                            <button onclick="switchTab('tasks')" class="px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition cursor-pointer whitespace-nowrap ${currentTab === 'tasks' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+                                <i class="fa-solid fa-list-check mr-1.5"></i> Công việc
+                            </button>
+                            <button onclick="switchTab('gantt')" class="px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition cursor-pointer whitespace-nowrap ${currentTab === 'gantt' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+                                <i class="fa-solid fa-chart-gantt mr-1.5"></i> Gantt Chart
+                            </button>
+                            <button onclick="switchTab('costs')" class="px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition cursor-pointer whitespace-nowrap ${currentTab === 'costs' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+                                <i class="fa-solid fa-wallet mr-1.5"></i> Chi phí
+                            </button>
+                            <button onclick="switchTab('risks')" class="px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition cursor-pointer whitespace-nowrap ${currentTab === 'risks' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+                                <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Rủi ro & Hướng giải quyết
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 md:p-6 max-w-7xl mx-auto w-full flex-1">
+                    ${tabContentHtml}
+                </div>
+            `;
+        }
+
+        function renderApp() {
+            renderProjectList();
+            renderMainContent();
+            checkTaskDeadlines();
+        }
+
+        requestNotificationPermission();
+    </script>
+</body>
+</html>
